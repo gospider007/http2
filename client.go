@@ -92,7 +92,10 @@ func (cc *Http2ClientConn) run() (err error) {
 		switch f := f.(type) {
 		case *Http2MetaHeadersFrame:
 			if cc.http2clientStream == nil {
-				return tools.WrapError(errors.New("unexpected meta headers frame"), "run")
+				return tools.WrapError(errors.New("unexpected meta headers frame"), "headers")
+			}
+			if cc.http2clientStream.ID != f.StreamID {
+				return tools.WrapError(errors.New("not found stream id"), "headers")
 			}
 			resp, err := cc.loop.handleResponse(cc.http2clientStream, f)
 			select {
@@ -325,13 +328,18 @@ func (cc *Http2ClientConn) DoRequest(req *http.Request, orderHeaders []interface
 	}
 	cc.initStream()
 	go cc.http2clientStream.writeRequest(req, orderHeaders)
-	select {
-	case respData := <-cc.http2clientStream.respDone:
-		return respData.resp, cc.http2clientStream.readCtx, respData.err
-	case <-cc.ctx.Done():
-		return nil, nil, cc.ctx.Err()
-	case <-req.Context().Done():
-		return nil, nil, req.Context().Err()
+	for {
+		select {
+		case respData := <-cc.http2clientStream.respDone:
+			if respData.err == nil && respData.resp != nil && respData.resp.StatusCode == 103 {
+				continue
+			}
+			return respData.resp, cc.http2clientStream.readCtx, respData.err
+		case <-cc.ctx.Done():
+			return nil, nil, cc.ctx.Err()
+		case <-req.Context().Done():
+			return nil, nil, req.Context().Err()
+		}
 	}
 }
 
