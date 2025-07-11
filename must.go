@@ -116,6 +116,26 @@ const (
 	http2FrameContinuation http2FrameType = 0x9
 )
 
+var http2frameName = map[http2FrameType]string{
+	http2FrameData:         "DATA",
+	http2FrameHeaders:      "HEADERS",
+	http2FramePriority:     "PRIORITY",
+	http2FrameRSTStream:    "RST_STREAM",
+	http2FrameSettings:     "SETTINGS",
+	http2FramePushPromise:  "PUSH_PROMISE",
+	http2FramePing:         "PING",
+	http2FrameGoAway:       "GOAWAY",
+	http2FrameWindowUpdate: "WINDOW_UPDATE",
+	http2FrameContinuation: "CONTINUATION",
+}
+
+func (t http2FrameType) String() string {
+	if s, ok := http2frameName[t]; ok {
+		return s
+	}
+	return fmt.Sprintf("UNKNOWN_FRAME_TYPE_%d", uint8(t))
+}
+
 type http2Flags uint8
 
 func (f http2Flags) Has(v http2Flags) bool {

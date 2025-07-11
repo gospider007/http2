@@ -34,15 +34,21 @@ func (obj *Spec) Map() map[string]any {
 	rawContent = rawContent[bytes.Index(rawContent, []byte("\r\n\r\n"))+4:]
 	reader := Http2NewReaderFramer(bytes.NewReader(rawContent))
 	streams := []map[string]any{}
+	fields := []map[string]any{}
+	var isHead bool
 readF:
 	for {
 		f, _, err := reader.ReadFrame()
 		if err != nil {
 			break readF
 		}
+		if isHead {
+			if _, ok := f.(*Http2MetaHeadersFrame); !ok {
+				break readF
+			}
+		}
 		switch frame := f.(type) {
 		case *Http2MetaHeadersFrame:
-			fields := []map[string]any{}
 			data := map[string]any{
 				"type":     frame.Type,
 				"name":     "Http2MetaHeadersFrame",
@@ -61,7 +67,10 @@ readF:
 			}
 			data["headers"] = fields
 			streams = append(streams, data)
-			break readF
+			isHead = true
+			if frame.HeadersEnded() {
+				break readF
+			}
 		case *Http2SettingsFrame:
 			data := map[string]any{
 				"type":     frame.Type,
@@ -130,7 +139,7 @@ func ParseSpec(raw []byte) (*Spec, error) {
 	var connFlow uint32
 	var streamID uint32
 	var priority Http2PriorityParam
-	var ok bool
+	var isHead bool
 	initData := []byte{}
 readF:
 	for {
@@ -143,18 +152,20 @@ readF:
 		}
 		switch frame := f.(type) {
 		case *Http2MetaHeadersFrame:
-			names := [][2]string{}
 			for _, hf := range frame.RegularFields() {
-				names = append(names, [2]string{
+				orderHeaders = append(orderHeaders, [2]string{
 					hf.Name,
 					hf.Value,
 				})
 			}
-			orderHeaders = names
-			priority = frame.Priority
+			if !frame.Priority.IsZero() {
+				priority = frame.Priority
+			}
 			streamID = frame.StreamID
-			ok = true
-			break readF
+			isHead = true
+			if frame.HeadersEnded() {
+				break readF
+			}
 		case *Http2DataFrame:
 			return nil, errors.New("Http2DataFrame")
 		case *Http2GoAwayFrame:
@@ -180,7 +191,7 @@ readF:
 			return nil, errors.New("Http2UnknownFramep")
 		}
 	}
-	if !ok {
+	if !isHead {
 		return nil, errors.New("not found stream")
 	}
 	return &Spec{

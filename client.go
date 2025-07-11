@@ -66,9 +66,6 @@ type http2clientStream struct {
 
 	respDone chan *respC
 
-	writeCtx context.Context
-	writeCnl context.CancelFunc
-
 	readCtx context.Context
 	readCnl context.CancelCauseFunc
 }
@@ -304,7 +301,6 @@ func (cc *Http2ClientConn) initStream() {
 		bodyWriter: writer,
 		respDone:   make(chan *respC),
 	}
-	cs.writeCtx, cs.writeCnl = context.WithCancel(cc.ctx)
 	cs.readCtx, cs.readCnl = context.WithCancelCause(cc.ctx)
 	cc.http2clientStream = cs
 	cs.inflow.init(int32(cc.spec.initialWindowSize))
@@ -327,9 +323,29 @@ func (cc *Http2ClientConn) DoRequest(req *http.Request, orderHeaders []interface
 		return nil, nil, cc.shutdownErr
 	}
 	cc.initStream()
-	go cc.http2clientStream.writeRequest(req, orderHeaders)
+	var writeErr error
+	writeDone := make(chan struct{})
+	go func() {
+		writeErr = cc.http2clientStream.writeRequest(req, orderHeaders)
+		close(writeDone)
+	}()
 	for {
 		select {
+		case <-writeDone:
+			if writeErr != nil {
+				return nil, nil, writeErr
+			}
+			select {
+			case respData := <-cc.http2clientStream.respDone:
+				if respData.err == nil && respData.resp != nil && respData.resp.StatusCode == 103 {
+					continue
+				}
+				return respData.resp, cc.http2clientStream.readCtx, respData.err
+			case <-cc.ctx.Done():
+				return nil, nil, cc.ctx.Err()
+			case <-req.Context().Done():
+				return nil, nil, req.Context().Err()
+			}
 		case respData := <-cc.http2clientStream.respDone:
 			if respData.err == nil && respData.resp != nil && respData.resp.StatusCode == 103 {
 				continue
@@ -347,22 +363,17 @@ func (cs *http2clientStream) writeRequest(req *http.Request, orderHeaders []inte
 	Key() string
 	Val() any
 }) (err error) {
-	defer func() {
-		if err != nil {
-			cs.cc.CloseWithError(err)
-		}
-		cs.writeCnl()
-	}()
-	if err = cs.encodeAndWriteHeaders(req, orderHeaders); err != nil {
+	endStream := http2actualContentLength(req) == 0
+	if err = cs.encodeAndWriteHeaders(req, endStream, orderHeaders); err != nil {
 		return err
 	}
-	if http2actualContentLength(req) != 0 {
+	if !endStream {
 		return cs.writeRequestBody(req)
 	}
 	return
 }
 
-func (cs *http2clientStream) encodeAndWriteHeaders(req *http.Request, orderHeaders []interface {
+func (cs *http2clientStream) encodeAndWriteHeaders(req *http.Request, endStream bool, orderHeaders []interface {
 	Key() string
 	Val() any
 }) error {
@@ -372,7 +383,7 @@ func (cs *http2clientStream) encodeAndWriteHeaders(req *http.Request, orderHeade
 	if err != nil {
 		return err
 	}
-	return cs.cc.writeHeaders(cs.ID, http2actualContentLength(req) == 0, int(cs.cc.spec.maxFrameSize), hdrs)
+	return cs.cc.writeHeaders(cs.ID, endStream, int(cs.cc.spec.maxFrameSize), hdrs)
 }
 func (cc *Http2ClientConn) writeHeaders(streamID uint32, endStream bool, maxFrameSize int, hdrs []byte) error {
 	first := true
@@ -562,7 +573,6 @@ func (cc *Http2ClientConn) encodeHeaders(req *http.Request, orderHeaders []inter
 				}
 			}
 		}
-
 		if contentLength, _ := tools.GetContentLength(req); contentLength >= 0 {
 			f("content-length", strconv.FormatInt(contentLength, 10))
 		}
@@ -644,6 +654,10 @@ func (b http2transportResponseBody) Read(p []byte) (n int, err error) {
 	return b.cs.bodyReader.Read(p)
 }
 func (b http2transportResponseBody) Close() error {
+	return b.CloseWithError(nil)
+}
+func (b http2transportResponseBody) CloseWithError(err error) error {
+	b.cs.readCnl(err)
 	return b.cs.bodyReader.Close()
 }
 func (rl *http2clientConnReadLoop) processData(cs *http2clientStream, f *Http2DataFrame) (err error) {
@@ -674,12 +688,11 @@ func (rl *http2clientConnReadLoop) processData(cs *http2clientStream, f *Http2Da
 		}
 	}
 	if f.StreamEnded() {
-		select {
-		case <-cs.writeCtx.Done():
-		default:
-			err = errors.New("last task not write done with read done")
+		if err != nil {
+			cs.readCnl(err)
+		} else {
+			cs.readCnl(tools.ErrNoErr)
 		}
-		cs.readCnl(err)
 		cs.bodyWriter.CloseWithError(io.EOF)
 	}
 	return
