@@ -595,12 +595,6 @@ type http2clientConnReadLoop struct {
 	cc *Http2ClientConn
 }
 
-type http2noBodyReader struct{}
-
-func (http2noBodyReader) Close() error { return nil }
-
-func (http2noBodyReader) Read([]byte) (int, error) { return 0, io.EOF }
-
 func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http2MetaHeadersFrame) (*http.Response, error) {
 	status := f.PseudoValue("status")
 	statusCode, err := strconv.Atoi(status)
@@ -639,7 +633,7 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http
 		res.ContentLength = 0
 	}
 	if f.StreamEnded() {
-		res.Body = http2noBodyReader{}
+		res.Body = http.NoBody
 		return res, nil
 	}
 	res.Body = http2transportResponseBody{cs}
