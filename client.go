@@ -48,13 +48,15 @@ type Http2ClientConn struct {
 	shutdownErr error
 }
 
+func (obj *Http2ClientConn) Context() context.Context {
+	return obj.ctx
+}
 func (obj *Http2ClientConn) Stream() io.ReadWriteCloser {
 	return nil
 }
 
 type respC struct {
 	resp *http.Response
-	ctx  context.Context
 	err  error
 }
 
@@ -94,18 +96,24 @@ func (cc *Http2ClientConn) run() (err error) {
 			if cc.http2clientStream.ID != f.StreamID {
 				return tools.WrapError(errors.New("not found stream id"), "headers")
 			}
-			resp, ctx, err := cc.loop.handleResponse(cc.http2clientStream, f)
+			resp, err := cc.loop.handleResponse(cc.http2clientStream, f)
 			select {
-			case cc.respDone <- &respC{resp: resp, ctx: ctx, err: err}:
+			case cc.respDone <- &respC{resp: resp, err: err}:
 			case <-cc.ctx.Done():
 				err = cc.ctx.Err()
 			}
 			if err != nil {
 				return tools.WrapError(err, "handleResponse")
 			}
+			if cc.shutdownErr != nil && f.StreamEnded() {
+				return cc.shutdownErr
+			}
 		case *Http2DataFrame:
 			if err = cc.loop.processData(cc.http2clientStream, f); err != nil {
 				return tools.WrapError(err, "processData")
+			}
+			if cc.shutdownErr != nil && f.StreamEnded() {
+				return cc.shutdownErr
 			}
 		case *Http2GoAwayFrame:
 			if f.ErrCode == 0 {
@@ -115,13 +123,8 @@ func (cc *Http2ClientConn) run() (err error) {
 				return tools.WrapError(err, "GOAWAY")
 			}
 		case *Http2RSTStreamFrame:
-			if f.ErrCode == 0 {
-				cc.shutdownErr = fmt.Errorf("http2: server sent processResetStream with close connection ok")
-				return tools.WrapError(cc.shutdownErr, "processResetStream")
-			} else {
-				err = fmt.Errorf("http2: server sent processResetStream with error code %v", f.ErrCode)
-				return tools.WrapError(err, "processResetStream")
-			}
+			err = fmt.Errorf("http2: server sent processResetStream with error code %v", f.ErrCode)
+			return tools.WrapError(err, "processResetStream")
 		case *Http2SettingsFrame:
 			if err = cc.loop.processSettings(f); err != nil {
 				return tools.WrapError(err, "processSettings")
@@ -296,51 +299,51 @@ func (cc *Http2ClientConn) initStream() {
 	cc.streamID += 2
 }
 
-func (cc *Http2ClientConn) DoRequest(req *http.Request, option *http1.Option) (response *http.Response, bodyCtx context.Context, err error) {
+func (cc *Http2ClientConn) DoRequest(req *http.Request, option *http1.Option) (response *http.Response, err error) {
 	defer func() {
 		if err != nil {
 			cc.CloseWithError(err)
 		}
 	}()
-	if cc.shutdownErr != nil {
-		return nil, nil, cc.shutdownErr
-	}
 	cc.initStream()
 	writeDone := make(chan struct{})
 	var writeErr error
 	go func() {
+		defer close(writeDone)
 		writeErr = cc.http2clientStream.writeRequest(req, option.OrderHeaders)
-		close(writeDone)
+		if writeErr != nil {
+			cc.CloseWithError(writeErr)
+		}
 	}()
 	for {
 		select {
 		case <-writeDone:
 			if writeErr != nil {
-				return nil, nil, writeErr
+				return nil, writeErr
 			}
 			select {
 			case respData := <-cc.respDone:
 				if respData.err == nil && respData.resp != nil && respData.resp.StatusCode == 103 {
 					continue
 				}
-				return respData.resp, respData.ctx, respData.err
+				return respData.resp, respData.err
 			case <-cc.ctx.Done():
-				return nil, nil, cc.ctx.Err()
+				return nil, cc.ctx.Err()
 			case <-req.Context().Done():
-				return nil, nil, req.Context().Err()
+				return nil, req.Context().Err()
 			}
 		case respData := <-cc.respDone:
 			if respData.err == nil {
-				respData.resp.Body.(*http1.ClientBody).SetWriteDone(writeDone)
+				respData.resp.Body.(*http1.Body).SetWriteDone(writeDone)
 				if respData.resp.StatusCode == 103 {
 					continue
 				}
 			}
-			return respData.resp, respData.ctx, respData.err
+			return respData.resp, respData.err
 		case <-cc.ctx.Done():
-			return nil, nil, cc.ctx.Err()
+			return nil, cc.ctx.Err()
 		case <-req.Context().Done():
-			return nil, nil, req.Context().Err()
+			return nil, req.Context().Err()
 		}
 	}
 }
@@ -579,11 +582,11 @@ type http2clientConnReadLoop struct {
 	cc *Http2ClientConn
 }
 
-func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http2MetaHeadersFrame) (*http.Response, context.Context, error) {
+func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http2MetaHeadersFrame) (*http.Response, error) {
 	status := f.PseudoValue("status")
 	statusCode, err := strconv.Atoi(status)
 	if err != nil {
-		return nil, nil, errors.New("malformed response from server: malformed non-numeric status pseudo header")
+		return nil, errors.New("malformed response from server: malformed non-numeric status pseudo header")
 	}
 	regularFields := f.RegularFields()
 	res := &http.Response{
@@ -617,12 +620,12 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http
 		res.ContentLength = 0
 	}
 	if f.StreamEnded() {
-		res.Body = http1.NewClientBody(http.NoBody, cs.cc, nil, nil)
-		return res, nil, nil
+		res.Body = http1.NewBody(http.NoBody, cs.cc, nil, nil, nil)
+		return res, nil
 	} else {
 		ctx, cnl := context.WithCancelCause(cs.cc.ctx)
-		res.Body = http1.NewClientBody(cs.bodyReader, cs.cc, cnl, nil)
-		return res, ctx, nil
+		res.Body = http1.NewBody(cs.bodyReader, cs.cc, ctx, cnl, nil)
+		return res, nil
 	}
 }
 
