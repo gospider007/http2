@@ -253,10 +253,10 @@ func NewClientConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h
 	select {
 	case <-done:
 		if err != nil {
-			return nil, err
+			return cc, err
 		}
 	case <-reqCtx.Done():
-		return nil, context.Cause(reqCtx)
+		return cc, context.Cause(reqCtx)
 	}
 	cc.loop = &http2clientConnReadLoop{cc: cc}
 	go cc.run()
