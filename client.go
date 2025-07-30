@@ -117,7 +117,7 @@ func (cc *Http2ClientConn) run() (err error) {
 			}
 		case *Http2GoAwayFrame:
 			if f.ErrCode == 0 {
-				cc.shutdownErr = fmt.Errorf("http2: server sent GOAWAY with close connection ok")
+				cc.shutdownErr = tools.WrapError(tools.ErrNoErr, "http2: server sent GOAWAY with close connection ok")
 			} else {
 				err = fmt.Errorf("http2: server sent GOAWAY with error code %v", f.ErrCode)
 				return tools.WrapError(err, "GOAWAY")
@@ -299,7 +299,7 @@ func (cc *Http2ClientConn) initStream() {
 	cc.streamID += 2
 }
 
-func (cc *Http2ClientConn) DoRequest(req *http.Request, option *http1.Option) (response *http.Response, err error) {
+func (cc *Http2ClientConn) DoRequest(ctx context.Context, req *http.Request, option *http1.Option) (response *http.Response, err error) {
 	defer func() {
 		if err != nil {
 			cc.CloseWithError(err)
@@ -327,10 +327,10 @@ func (cc *Http2ClientConn) DoRequest(req *http.Request, option *http1.Option) (r
 					continue
 				}
 				return respData.resp, respData.err
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			case <-cc.ctx.Done():
 				return nil, cc.ctx.Err()
-			case <-req.Context().Done():
-				return nil, req.Context().Err()
 			}
 		case respData := <-cc.respDone:
 			if respData.err == nil {
@@ -340,10 +340,10 @@ func (cc *Http2ClientConn) DoRequest(req *http.Request, option *http1.Option) (r
 				}
 			}
 			return respData.resp, respData.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-cc.ctx.Done():
 			return nil, cc.ctx.Err()
-		case <-req.Context().Done():
-			return nil, req.Context().Err()
 		}
 	}
 }
