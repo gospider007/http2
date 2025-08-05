@@ -200,7 +200,7 @@ func spec2option(h2Spec *Spec) (option gospiderOption) {
 	return option
 }
 
-func NewClientConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec *Spec, closefun func(error)) (http1.Conn, error) {
+func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec *Spec, closefun func(error)) (http1.Conn, error) {
 	var streamID uint32
 	if h2Spec != nil {
 		streamID = h2Spec.StreamID
@@ -620,11 +620,11 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http
 		res.ContentLength = 0
 	}
 	if f.StreamEnded() {
-		res.Body = http1.NewBody(http.NoBody, cs.cc, nil, nil, nil)
+		res.Body = http1.NewBody(http.NoBody, cs.cc, nil, nil, false, nil)
 		return res, nil
 	} else {
 		ctx, cnl := context.WithCancelCause(cs.cc.ctx)
-		res.Body = http1.NewBody(cs.bodyReader, cs.cc, ctx, cnl, nil)
+		res.Body = http1.NewBody(cs.bodyReader, cs.cc, ctx, cnl, false, nil)
 		return res, nil
 	}
 }
