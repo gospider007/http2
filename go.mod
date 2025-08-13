@@ -3,9 +3,9 @@ module github.com/gospider007/http2
 go 1.24.0
 
 require (
-	github.com/gospider007/http1 v0.0.0-20250730005050-515977c5b07d
-	github.com/gospider007/tools v0.0.0-20250730001814-2c13a4717064
-	golang.org/x/net v0.42.0
+	github.com/gospider007/http1 v0.0.0-20250811065845-3171c31c920d
+	github.com/gospider007/tools v0.0.0-20250811070046-82a1a8f96823
+	golang.org/x/net v0.43.0
 )
 
 require (
@@ -29,6 +29,6 @@ require (
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/image v0.29.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/image v0.30.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 )

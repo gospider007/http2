@@ -23,7 +23,6 @@ import (
 
 type Http2ClientConn struct {
 	tconn             net.Conn
-	closeFunc         func(error)
 	loop              *http2clientConnReadLoop
 	http2clientStream *http2clientStream
 
@@ -200,7 +199,7 @@ func spec2option(h2Spec *Spec) (option gospiderOption) {
 	return option
 }
 
-func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec *Spec, closefun func(error)) (http1.Conn, error) {
+func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec *Spec) (http1.Conn, error) {
 	var streamID uint32
 	if h2Spec != nil {
 		streamID = h2Spec.StreamID
@@ -209,7 +208,6 @@ func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec 
 	}
 	spec := spec2option(h2Spec)
 	cc := &Http2ClientConn{
-		closeFunc:   closefun,
 		spec:        spec,
 		tconn:       c,
 		flowNotices: make(chan struct{}, 1),
@@ -264,9 +262,6 @@ func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec 
 }
 
 func (cc *Http2ClientConn) CloseWithError(err error) error {
-	if cc.closeFunc != nil {
-		cc.closeFunc(err)
-	}
 	cc.cnl(err)
 	cc.tconn.Close()
 	return nil
