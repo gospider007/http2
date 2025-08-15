@@ -45,6 +45,14 @@ type Http2ClientConn struct {
 	cnl         context.CancelCauseFunc
 	respDone    chan *respC
 	shutdownErr error
+	bodyContext context.Context
+}
+
+func (obj *Http2ClientConn) SetBodyContext(ctx context.Context) {
+	obj.bodyContext = ctx
+}
+func (obj *Http2ClientConn) BodyContext() context.Context {
+	return obj.bodyContext
 }
 
 func (obj *Http2ClientConn) Context() context.Context {
@@ -60,15 +68,11 @@ type respC struct {
 }
 
 type http2clientStream struct {
-	cc *Http2ClientConn
-
-	// readCtx    context.Context
-	// readCnl    context.CancelCauseFunc
-	bodyReader *io.PipeReader
-	bodyWriter *io.PipeWriter
-	ID         uint32
-	inflow     http2inflow
-	flow       http2outflow
+	cc     *Http2ClientConn
+	body   *http2clientBody
+	ID     uint32
+	inflow http2inflow
+	flow   http2outflow
 }
 
 func (cc *Http2ClientConn) notice() {
@@ -264,6 +268,9 @@ func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec 
 func (cc *Http2ClientConn) CloseWithError(err error) error {
 	cc.cnl(err)
 	cc.tconn.Close()
+	if cc.http2clientStream != nil {
+		cc.http2clientStream.body.CloseWithError(err)
+	}
 	return nil
 }
 
@@ -277,14 +284,40 @@ func http2actualContentLength(req *http.Request) int64 {
 	return -1
 }
 
-func (cc *Http2ClientConn) initStream() {
+type http2clientBody struct {
+	c *Http2ClientConn
+	r *io.PipeReader
+	w *io.PipeWriter
+}
+
+func (obj *http2clientBody) Close() error {
+	return obj.CloseWithError(nil)
+}
+
+func (obj *http2clientBody) CloseWithError(err error) error {
+	return obj.w.CloseWithError(err)
+}
+func (obj *http2clientBody) Read(p []byte) (n int, err error) {
+	return obj.r.Read(p)
+}
+func (obj *http2clientBody) Write(p []byte) (n int, err error) {
+	return obj.w.Write(p)
+}
+
+func (cc *Http2ClientConn) initStream() error {
 	cc.wmu.Lock()
 	defer cc.wmu.Unlock()
+	if bodyContext := cc.BodyContext(); bodyContext != nil {
+		select {
+		case <-bodyContext.Done():
+		default:
+			return errors.New("body is busy")
+		}
+	}
 	reader, writer := io.Pipe()
 	cs := &http2clientStream{
-		cc:         cc,
-		bodyReader: reader,
-		bodyWriter: writer,
+		cc:   cc,
+		body: &http2clientBody{c: cc, r: reader, w: writer},
 	}
 	cc.http2clientStream = cs
 	cs.inflow.init(int32(cc.spec.initialWindowSize))
@@ -292,6 +325,7 @@ func (cc *Http2ClientConn) initStream() {
 	cs.flow.setConnFlow(&cc.flow)
 	cs.ID = cc.streamID
 	cc.streamID += 2
+	return nil
 }
 
 func (cc *Http2ClientConn) DoRequest(ctx context.Context, req *http.Request, option *http1.Option) (response *http.Response, err error) {
@@ -300,7 +334,9 @@ func (cc *Http2ClientConn) DoRequest(ctx context.Context, req *http.Request, opt
 			cc.CloseWithError(err)
 		}
 	}()
-	cc.initStream()
+	if err = cc.initStream(); err != nil {
+		return nil, err
+	}
 	writeDone := make(chan struct{})
 	var writeErr error
 	go func() {
@@ -619,7 +655,7 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http
 		return res, nil
 	} else {
 		ctx, cnl := context.WithCancelCause(cs.cc.ctx)
-		res.Body = http1.NewBody(cs.bodyReader, cs.cc, ctx, cnl, false, nil)
+		res.Body = http1.NewBody(cs.body, cs.cc, ctx, cnl, false, nil)
 		return res, nil
 	}
 }
@@ -627,7 +663,7 @@ func (rl *http2clientConnReadLoop) handleResponse(cs *http2clientStream, f *Http
 func (rl *http2clientConnReadLoop) processData(cs *http2clientStream, f *Http2DataFrame) (err error) {
 	if f.Length > 0 {
 		if len(f.Data()) > 0 {
-			if _, err = cs.bodyWriter.Write(f.Data()); err != nil {
+			if _, err = cs.body.Write(f.Data()); err != nil {
 				return err
 			}
 		}
@@ -652,7 +688,7 @@ func (rl *http2clientConnReadLoop) processData(cs *http2clientStream, f *Http2Da
 		}
 	}
 	if f.StreamEnded() {
-		cs.bodyWriter.CloseWithError(io.EOF)
+		cs.body.CloseWithError(io.EOF)
 	}
 	return
 }
