@@ -307,13 +307,6 @@ func (obj *http2clientBody) Write(p []byte) (n int, err error) {
 func (cc *Http2ClientConn) initStream() error {
 	cc.wmu.Lock()
 	defer cc.wmu.Unlock()
-	if bodyContext := cc.BodyContext(); bodyContext != nil {
-		select {
-		case <-bodyContext.Done():
-		default:
-			return errors.New("body is busy")
-		}
-	}
 	reader, writer := io.Pipe()
 	cs := &http2clientStream{
 		cc:   cc,
