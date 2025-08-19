@@ -69,8 +69,8 @@ github.com/google/pprof v0.0.0-20200212024743-f11f1df84d12/go.mod h1:ZgVRPoUq/hf
 github.com/google/renameio v0.1.0/go.mod h1:KWCgfxg9yswjAJkECMjeO8J8rahYeXnNhOm40UhjYkI=
 github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+vpHVxEJEs9eg=
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
-github.com/gospider007/http1 v0.0.0-20250815030711-c802b9917f04 h1:R/eeznoLE446gRpdd/j6n96lB6f5IEsVjXbVWuKaOYk=
-github.com/gospider007/http1 v0.0.0-20250815030711-c802b9917f04/go.mod h1:ALEW+Xni1vkhOL3IvHlvt58TKdpY4HnvkiG2pPr09ss=
+github.com/gospider007/http1 v0.0.0-20250817122009-0b953c2c8efa h1:SJPg55yHMzcrprjvBA2YBMYCmIRauhFtQGL6QVTManM=
+github.com/gospider007/http1 v0.0.0-20250817122009-0b953c2c8efa/go.mod h1:2KmewDOljCqfLfbSiIzuohAHvivZwj9pSd25pGEVvfE=
 github.com/gospider007/kinds v0.0.0-20250815031133-b2282666f69c h1:WnFZf0v+Du5nH/R3pq5QwkTcfVxLqVMRp2dPaI6w6YY=
 github.com/gospider007/kinds v0.0.0-20250815031133-b2282666f69c/go.mod h1:8eAmhxyW7p81nsYlD5Wj8I0HuZpVGci+Q9wr6vfY8pg=
 github.com/gospider007/re v0.0.0-20250815031101-a57caeff73bf h1:+3g9qmg+XLbYcY4vvbsDM7xHkXF+5U8V/haAYDImGTA=

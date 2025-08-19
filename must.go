@@ -12,20 +12,21 @@ import (
 type errHttp2Code uint32
 
 const (
-	errHttp2CodeNo                 errHttp2Code = 0x0
-	errHttp2CodeProtocol           errHttp2Code = 0x1
-	errHttp2CodeInternal           errHttp2Code = 0x2
-	errHttp2CodeFlowControl        errHttp2Code = 0x3
-	errHttp2CodeSettingsTimeout    errHttp2Code = 0x4
-	errHttp2CodeStreamClosed       errHttp2Code = 0x5
-	errHttp2CodeFrameSize          errHttp2Code = 0x6
-	errHttp2CodeRefusedStream      errHttp2Code = 0x7
-	errHttp2CodeCancel             errHttp2Code = 0x8
-	errHttp2CodeCompression        errHttp2Code = 0x9
-	errHttp2CodeConnect            errHttp2Code = 0xa
-	errHttp2CodeEnhanceYourCalm    errHttp2Code = 0xb
-	errHttp2CodeInadequateSecurity errHttp2Code = 0xc
-	errHttp2CodeHTTP11Required     errHttp2Code = 0xd
+	errHttp2CodeProtocol    errHttp2Code = 0x1
+	errHttp2CodeFlowControl errHttp2Code = 0x3
+	errHttp2CodeFrameSize   errHttp2Code = 0x6
+	errHttp2CodeCompression errHttp2Code = 0x9
+
+	// errHttp2CodeNo                 errHttp2Code = 0x0
+	// errHttp2CodeInternal           errHttp2Code = 0x2
+	// errHttp2CodeSettingsTimeout    errHttp2Code = 0x4
+	// errHttp2CodeStreamClosed       errHttp2Code = 0x5
+	// errHttp2CodeRefusedStream      errHttp2Code = 0x7
+	// errHttp2CodeCancel             errHttp2Code = 0x8
+	// errHttp2CodeConnect            errHttp2Code = 0xa
+	// errHttp2CodeEnhanceYourCalm    errHttp2Code = 0xb
+	// errHttp2CodeInadequateSecurity errHttp2Code = 0xc
+	// errHttp2CodeHTTP11Required     errHttp2Code = 0xd
 )
 
 type http2ConnectionError errHttp2Code

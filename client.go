@@ -258,6 +258,7 @@ func NewConn(conCtx context.Context, reqCtx context.Context, c net.Conn, h2Spec 
 			return cc, err
 		}
 	case <-reqCtx.Done():
+		c.Close()
 		return cc, context.Cause(reqCtx)
 	}
 	cc.loop = &http2clientConnReadLoop{cc: cc}
