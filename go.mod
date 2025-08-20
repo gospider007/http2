@@ -3,7 +3,7 @@ module github.com/gospider007/http2
 go 1.25
 
 require (
-	github.com/gospider007/http1 v0.0.0-20250819094554-40921c3867a9
+	github.com/gospider007/http1 v0.0.0-20250820001757-7e2103027e4b
 	github.com/gospider007/tools v0.0.0-20250819094836-a81233312764
 	golang.org/x/net v0.43.0
 )
@@ -28,7 +28,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/sorairolake/lzip-go v0.3.7 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
-	github.com/ulikunitz/xz v0.5.12 // indirect
+	github.com/ulikunitz/xz v0.5.13 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	golang.org/x/image v0.30.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
