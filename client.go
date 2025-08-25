@@ -332,31 +332,15 @@ func (cc *Http2ClientConn) DoRequest(ctx context.Context, req *http.Request, opt
 		return nil, err
 	}
 	writeDone := make(chan struct{})
-	var writeErr error
 	go func() {
 		defer close(writeDone)
-		writeErr = cc.http2clientStream.writeRequest(req, option.OrderHeaders)
+		writeErr := cc.http2clientStream.writeRequest(req, option.OrderHeaders)
 		if writeErr != nil {
 			cc.CloseWithError(writeErr)
 		}
 	}()
 	for {
 		select {
-		case <-writeDone:
-			if writeErr != nil {
-				return nil, writeErr
-			}
-			select {
-			case respData := <-cc.respDone:
-				if respData.err == nil && respData.resp != nil && respData.resp.StatusCode == 103 {
-					continue
-				}
-				return respData.resp, respData.err
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-cc.ctx.Done():
-				return nil, cc.ctx.Err()
-			}
 		case respData := <-cc.respDone:
 			if respData.err == nil {
 				respData.resp.Body.(*http1.Body).SetWriteDone(writeDone)
@@ -366,8 +350,10 @@ func (cc *Http2ClientConn) DoRequest(ctx context.Context, req *http.Request, opt
 			}
 			return respData.resp, respData.err
 		case <-ctx.Done():
+			cc.CloseWithError(context.Cause(ctx))
 			return nil, ctx.Err()
 		case <-cc.ctx.Done():
+			cc.CloseWithError(context.Cause(cc.ctx))
 			return nil, cc.ctx.Err()
 		}
 	}
